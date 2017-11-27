@@ -6,12 +6,15 @@
     android:layout_height="match_parent"
     tools:context="com.wangzu.webrtcdemo.MainActivity">
 
+
+
+
     <org.webrtc.SurfaceViewRenderer
         android:id="@+id/localVideoView"
         android:layout_width="150dp"
         android:layout_height="200dp"
-        android:fitsSystemWindows="true"
-        android:layout_gravity="top|right"/>
+        android:layout_gravity="top|right"
+        android:fitsSystemWindows="true"/>
 
     <org.webrtc.SurfaceViewRenderer
         android:id="@+id/remoteVideoView"
@@ -22,33 +25,32 @@
         android:id="@+id/charttools_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:visibility="invisible"
         android:layout_gravity="bottom"
+        android:gravity="center"
+        android:orientation="horizontal"
         android:padding="30dp">
 
         <TextView
             android:id="@+id/switch_camera_tv"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:drawableTop="@drawable/ic_camera"
             android:drawablePadding="5dp"
-            android:textColor="@android:color/white"
-            android:textSize="12sp"
+            android:drawableTop="@drawable/ic_camera"
             android:padding="10dp"
-            android:text="切换摄像头"/>
+            android:text="切换摄像头"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"/>
 
         <TextView
             android:id="@+id/loundspeaker_tv"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:drawableTop="@drawable/ic_loundspeaker"
             android:drawablePadding="5dp"
-            android:textColor="@android:color/white"
-            android:textSize="12sp"
+            android:drawableTop="@drawable/ic_loundspeaker"
             android:padding="10dp"
-            android:text="扬声器"/>
+            android:text="扬声器"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"/>
     </LinearLayout>
 
 </FrameLayout>

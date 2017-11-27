@@ -5,7 +5,6 @@ import android.content.Context;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -60,9 +59,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private SurfaceViewRenderer remoteView;
     private PeerConnectionFactory mPeerConnectionFactory;
     private CameraVideoCapturer mVideoCapturer;
-    private VideoSource mVideoSource;
     private VideoTrack mVideoTrack;
-    private AudioSource mAudioSource;
     private AudioTrack mAudioTrack;
     private EglBase mEglBase;
     private MediaStream mMediaStream;
@@ -73,19 +70,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Peer mPeer;
     private boolean isOffer = false;
     private AudioManager mAudioManager;
+    private VideoTrack remoteVideoTrack;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        //全屏显示
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_main);
         initview();
         AskPermission();
-
-        mAudioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
-
-        mAudioManager.setMode(AudioManager.MODE_IN_CALL);
-        mAudioManager.setSpeakerphoneOn(false);
     }
 
     private void AskPermission() {
@@ -133,19 +126,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         //设置视频Hw加速,否则视频播放闪屏
         mPeerConnectionFactory.setVideoHwAccelerationOptions(mEglBase.getEglBaseContext(), mEglBase.getEglBaseContext());
 
+
         initConstraints();
 
         mVideoCapturer = createVideoCapture(this);
 
-        mVideoSource = mPeerConnectionFactory.createVideoSource(mVideoCapturer);
-        mVideoTrack = mPeerConnectionFactory.createVideoTrack("videtrack", mVideoSource);
+        VideoSource videoSource = mPeerConnectionFactory.createVideoSource(mVideoCapturer);
+        mVideoTrack = mPeerConnectionFactory.createVideoTrack("videtrack", videoSource);
 
         //设置视频画质 i:width i1 :height i2:fps
 
         mVideoCapturer.startCapture(720, 1280, 30);
 
-        mAudioSource = mPeerConnectionFactory.createAudioSource(new MediaConstraints());
-        mAudioTrack = mPeerConnectionFactory.createAudioTrack("audiotrack", mAudioSource);
+        AudioSource audioSource = mPeerConnectionFactory.createAudioSource(new MediaConstraints());
+        mAudioTrack = mPeerConnectionFactory.createAudioTrack("audiotrack", audioSource);
         //播放本地视频
         mVideoTrack.addRenderer(new VideoRenderer(localView));
 
@@ -157,7 +151,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         //连接服务器
         try {
-            mSocket = IO.socket("http://10.0.0.16:6666/");
+            mSocket = IO.socket("http://10.0.0.10:6666/");
         } catch (URISyntaxException e) {
             e.printStackTrace();
         }
@@ -165,6 +159,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             @Override
             public void call(Object... args) {
                 isOffer = true;
+                if (mPeer == null) {
+                    mPeer = new Peer();
+                }
                 mPeer.peerConnection.createOffer(mPeer, sdpConstraints);
             }
         }).on("IceInfo", new Emitter.Listener() {
@@ -186,6 +183,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }).on("SdpInfo", new Emitter.Listener() {
             @Override
             public void call(Object... args) {
+                if (mPeer == null) {
+                    mPeer = new Peer();
+                }
                 try {
                     JSONObject jsonObject = new JSONObject(args[0].toString());
                     SessionDescription description = new SessionDescription
@@ -201,7 +201,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
         });
         mSocket.connect();
-        mPeer = new Peer();
     }
 
     private void initConstraints() {
@@ -219,6 +218,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         sdpConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"));
 
     }
+
 
     private CameraVideoCapturer createVideoCapture(Context context) {
         CameraEnumerator enumerator;
@@ -262,8 +262,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         localView = findViewById(R.id.localVideoView);
         remoteView = findViewById(R.id.remoteVideoView);
 
+        //创建EglBase对象
         mEglBase = EglBase.create();
 
+        //初始化localView
         localView.init(mEglBase.getEglBaseContext(), null);
         localView.setKeepScreenOn(true);
         localView.setMirror(true);
@@ -271,31 +273,50 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         localView.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT);
         localView.setEnableHardwareScaler(false);
 
+        //初始化remoteView
         remoteView.init(mEglBase.getEglBaseContext(), null);
         remoteView.setMirror(false);
         remoteView.setZOrderMediaOverlay(true);
         remoteView.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT);
         remoteView.setEnableHardwareScaler(false);
+
+        //关闭扬声器
+        mAudioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        assert mAudioManager != null;
+        mAudioManager.setMode(AudioManager.MODE_IN_CALL);
+        mAudioManager.setSpeakerphoneOn(false);
     }
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
-        if (localView != null) {
-            localView.release();
-        }
         if (mSocket != null) {
             mSocket.disconnect();
-            mSocket.close();
         }
-        System.exit(0);
+        if (mVideoCapturer != null) {
+            try {
+                mVideoCapturer.stopCapture();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        if (mPeer != null) {
+            mPeer.peerConnection.close();
+            mPeer = null;
+        }
+        if (mVideoTrack != null) {
+            mVideoTrack.dispose();
+        }
+        if (mAudioTrack != null) {
+            mAudioTrack.dispose();
+        }
+        super.onDestroy();
     }
 
     class Peer implements PeerConnection.Observer, SdpObserver {
 
-        public PeerConnection peerConnection;
+        PeerConnection peerConnection;
 
-        public Peer() {
+        Peer() {
             peerConnection = mPeerConnectionFactory.createPeerConnection(iceServers, pcConstraints, this);
             peerConnection.addStream(mMediaStream);
         }
@@ -310,7 +331,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         @Override
         public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
             if (iceConnectionState == PeerConnection.IceConnectionState.DISCONNECTED) {
-                Log.e("tag", "已断开连接!");
+                remoteVideoTrack.dispose();
+                remoteView.clearImage();
+                mPeer = null;
+                isOffer = false;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this, "已断开连接!", Toast.LENGTH_SHORT).show();
+                    }
+                });
             }
         }
 
@@ -344,12 +374,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         @Override
         public void onAddStream(MediaStream mediaStream) {
-            Log.e("tag", "onAddStream");
-            if (mediaStream.videoTracks.size() > 0) {
-                mediaStream.videoTracks.get(0).addRenderer(new VideoRenderer(remoteView));
-            } else {
-                Log.e("tag", "no videotrack");
-            }
+            remoteVideoTrack = mediaStream.videoTracks.get(0);
+            remoteVideoTrack.addRenderer(new VideoRenderer(remoteView));
         }
 
         @Override
@@ -403,6 +429,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    //监听音量键控制视频通话音量
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
@@ -435,12 +462,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 mVideoCapturer.switchCamera(new CameraVideoCapturer.CameraSwitchHandler() {
                     @Override
                     public void onCameraSwitchDone(boolean b) {
+                        //切换摄像头完成
 
                     }
 
                     @Override
                     public void onCameraSwitchError(String s) {
-                        Log.e("tag", s);
+                        //切换摄像头错误
                     }
                 });
                 break;
@@ -461,10 +489,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private void toggleChartTools() {
         if (chartTools.isShown()) {
             chartTools.setVisibility(View.INVISIBLE);
-            getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         } else {
             chartTools.setVisibility(View.VISIBLE);
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
     }
 }
